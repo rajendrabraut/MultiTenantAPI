@@ -3,14 +3,9 @@ using MultiTenantAPI.Application.Tenants;
 
 namespace MultiTenantAPI.API.Middleware;
 
-public sealed class TenantMiddleware
+public sealed class TenantMiddleware(RequestDelegate next)
 {
-    private readonly RequestDelegate _next;
-
-    public TenantMiddleware(RequestDelegate next)
-    {
-        _next = next;
-    }
+    private readonly RequestDelegate _next = next;
 
     public async Task InvokeAsync(
         HttpContext context,

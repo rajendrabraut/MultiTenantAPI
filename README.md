@@ -58,6 +58,14 @@ Edit `src/MultiTenantAPI.API/appsettings.json`:
 
 Set `Mode` to `Redis` to use distributed cache backed sessions. Ensure Redis connection string is configured.
 
+### Rate Limiting
+```json
+"RateLimiting": {
+  "PermitLimit": 10000,
+  "WindowSeconds": 60
+}
+```
+
 ## Migration Notes
 ### Master DB (Tenant Store)
 ```bash
@@ -136,6 +144,14 @@ Response:
 - `companyCode` in JWT is informational; it is not trusted to set the tenant.
 - If tenant context is missing or invalid, API returns 401/403.
 - SQL Server provider uses standard T-SQL features compatible with SQL Server 2014.
+- The API adds correlation IDs and security headers (X-Content-Type-Options, X-Frame-Options, Referrer-Policy) to improve traceability and basic hardening.
+
+## Performance, Bottlenecks, and Threat Protection
+- **Rate limiting**: A fixed-window limiter throttles requests per tenant (or per IP when unauthenticated) to protect against floods and abuse.
+- **Tenant lookup**: Tenant connection strings are resolved **only at login** from the master store, which avoids per-request lookups.
+- **Connection pooling**: ADO.NET pools by connection string. Avoid per-user connection strings; normalize to one connection string per tenant. If you must call an external API for tenant config, cache the resolved connection string at login and store only the server-side session id to avoid per-request fetches.
+- **Pool sizing**: Tune `Max Pool Size` per tenant connection string to prevent pool exhaustion and align with SQL Server capacity.
+- **Logging & tracing**: Correlation IDs are emitted for every request for auditability and incident response.
 
 ## Run the API
 ```bash

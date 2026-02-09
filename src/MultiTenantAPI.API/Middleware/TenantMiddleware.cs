@@ -43,10 +43,12 @@ public sealed class TenantMiddleware
         }
 
         tenantContextAccessor.Current = new TenantContext(session.CompanyCode, session.ConnectionString, session.TenantSessionId);
+
         using (logger.BeginScope(new Dictionary<string, object> { ["CompanyCode"] = session.CompanyCode }))
         {
             logger.LogDebug("Tenant context set for {CompanyCode}.", session.CompanyCode);
             await _next(context);
         }
+
     }
 }

@@ -1,4 +1,5 @@
 using System.Text;
+using System.Threading.RateLimiting;
 using FluentValidation;
 using FluentValidation.AspNetCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -6,6 +7,7 @@ using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using MultiTenantAPI.API.Configuration;
 using MultiTenantAPI.API.Middleware;
 using MultiTenantAPI.Application.Auth;
 using MultiTenantAPI.Application.Products;
@@ -20,6 +22,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 builder.Services.Configure<TenantSessionOptions>(builder.Configuration.GetSection(TenantSessionOptions.SectionName));
+builder.Services.Configure<RateLimitOptions>(builder.Configuration.GetSection(RateLimitOptions.SectionName));
 
 builder.Services.AddControllers()
     .ConfigureApiBehaviorOptions(options =>
@@ -38,7 +41,31 @@ builder.Services.AddFluentValidationAutoValidation();
 builder.Services.AddValidatorsFromAssemblyContaining<Program>();
 
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddDataProtection();
+builder.Services.AddDataProtection()
+    .SetApplicationName("MultiTenantAPI");
+
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+    {
+        var companyCode = context.User?.FindFirst(TokenClaims.CompanyCode)?.Value;
+        var key = string.IsNullOrWhiteSpace(companyCode)
+            ? context.Connection.RemoteIpAddress?.ToString() ?? "anonymous"
+            : $"tenant:{companyCode}";
+
+        var rateOptions = context.RequestServices
+            .GetRequiredService<Microsoft.Extensions.Options.IOptions<RateLimitOptions>>().Value;
+
+        return RateLimitPartition.GetFixedWindowLimiter(key, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = rateOptions.PermitLimit,
+            Window = TimeSpan.FromSeconds(rateOptions.WindowSeconds),
+            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+            QueueLimit = 0
+        });
+    });
+});
 
 builder.Services.AddDbContext<MasterDbContext>(options =>
 {
@@ -113,21 +140,37 @@ app.UseExceptionHandler(errorApp =>
     errorApp.Run(async context =>
     {
         var exceptionFeature = context.Features.Get<IExceptionHandlerFeature>();
+        var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+        if (exceptionFeature?.Error is not null)
+        {
+            logger.LogError(exceptionFeature.Error, "Unhandled exception for {Path}.", context.Request.Path);
+        }
         var problemDetails = new ProblemDetails
         {
             Status = StatusCodes.Status500InternalServerError,
             Title = "An unexpected error occurred.",
-            Detail = exceptionFeature?.Error.Message
+            Detail = exceptionFeature?.Error.Message,
+            Extensions = { ["traceId"] = context.TraceIdentifier }
         };
         context.Response.StatusCode = problemDetails.Status.Value;
         await context.Response.WriteAsJsonAsync(problemDetails);
     });
 });
 
+app.Use(async (context, next) =>
+{
+    context.Response.Headers.TryAdd("X-Content-Type-Options", "nosniff");
+    context.Response.Headers.TryAdd("X-Frame-Options", "DENY");
+    context.Response.Headers.TryAdd("Referrer-Policy", "no-referrer");
+    await next();
+});
+
 app.UseSwagger();
 app.UseSwaggerUI();
 
+app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseMiddleware<TenantMiddleware>();
 app.UseAuthorization();
 

@@ -24,6 +24,7 @@ public sealed class TenantMiddleware(RequestDelegate next)
         var session = await tenantSessionService.TryGetSessionAsync(tenantSessionId, context.RequestAborted);
         if (session is null)
         {
+            logger.LogWarning("Tenant session missing or invalid for request {Path}.", context.Request.Path);
             if (context.User.Identity?.IsAuthenticated == true)
             {
                 context.Response.StatusCode = StatusCodes.Status403Forbidden;
@@ -37,8 +38,12 @@ public sealed class TenantMiddleware(RequestDelegate next)
         }
 
         tenantContextAccessor.Current = new TenantContext(session.CompanyCode, session.ConnectionString, session.TenantSessionId);
-        logger.LogDebug("Tenant context set for {CompanyCode}.", session.CompanyCode);
 
-        await _next(context);
+        using (logger.BeginScope(new Dictionary<string, object> { ["CompanyCode"] = session.CompanyCode }))
+        {
+            logger.LogDebug("Tenant context set for {CompanyCode}.", session.CompanyCode);
+            await _next(context);
+        }
+
     }
 }

@@ -10,10 +10,14 @@ using Microsoft.IdentityModel.Tokens;
 using MultiTenantAPI.API.Configuration;
 using MultiTenantAPI.API.Middleware;
 using MultiTenantAPI.Application.Auth;
+using MultiTenantAPI.Application.Common;
+using MultiTenantAPI.Application.Inventory;
 using MultiTenantAPI.Application.Products;
 using MultiTenantAPI.Application.Tenants;
 using MultiTenantAPI.Domain.Entities;
 using MultiTenantAPI.Infrastructure.Auth;
+using MultiTenantAPI.Infrastructure.Common;
+using MultiTenantAPI.Infrastructure.Inventory;
 using MultiTenantAPI.Infrastructure.Persistence;
 using MultiTenantAPI.Infrastructure.Products;
 using MultiTenantAPI.Infrastructure.Tenants;
@@ -90,8 +94,14 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<ITokenService, TokenService>();
 
+builder.Services.AddSingleton<IDateTimeProvider, SystemDateTimeProvider>();
+
 builder.Services.AddScoped<IProductRepository, DapperProductRepository>();
 builder.Services.AddScoped<IProductService, ProductService>();
+
+builder.Services.AddScoped<IInventoryReadRepository, DapperInventoryReadRepository>();
+builder.Services.AddScoped<IInventoryWriteRepository, EfInventoryWriteRepository>();
+builder.Services.AddScoped<IInventoryService, InventoryService>();
 
 builder.Services.AddScoped<Microsoft.AspNetCore.Identity.IPasswordHasher<User>, Microsoft.AspNetCore.Identity.PasswordHasher<User>>();
 

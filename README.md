@@ -44,6 +44,7 @@ This solution implements a multi-tenant ASP.NET Core Web API (.NET 8) using Clea
 - **JWT**: Access token includes `company_code` and `tenant_session_id` (when Redis mode is used).
 - **Middleware**: `TenantMiddleware` runs after authentication to set `TenantContext` before controllers.
 - **EF Core + Dapper**: Both use the per-request tenant connection string.
+- **Inventory app**: Category, supplier, item, stock movement, and warehouse data are modeled with EF Core; read-heavy lists and low-stock reports use Dapper.
 
 ## Configuration (Cookie vs Redis)
 Edit `src/MultiTenantAPI.API/appsettings.json`:
@@ -84,6 +85,9 @@ dotnet ef database update -p src/MultiTenantAPI.Infrastructure -s src/MultiTenan
 
 For tenant databases, run the migration once per tenant database connection string.
 
+### Inventory Schema (Code-First)
+The tenant database uses code-first entities for inventory (categories, suppliers, items, stock movements, warehouses) and seeds starter data via `HasData` in `TenantDbContext`.
+
 ## Example SQL (Seed Data)
 Master DB tenant registration:
 ```sql
@@ -99,6 +103,8 @@ VALUES (NEWID(), 'admin', '<hashed-password>', 1);
 INSERT INTO Products (Id, Name, Price)
 VALUES (NEWID(), 'Sample Product', 19.99);
 ```
+
+Inventory seed data is provided via EF Core `HasData` so no manual SQL is required.
 
 ## Example Requests
 ### Login
@@ -137,6 +143,37 @@ Response:
     "price": 19.99
   }
 ]
+```
+
+### Inventory Endpoints
+```
+GET /api/inventory/categories
+GET /api/inventory/suppliers
+GET /api/inventory/items
+POST /api/inventory/items
+POST /api/inventory/stock/adjust
+GET /api/inventory/stock/low
+```
+
+Create inventory item request:
+```json
+{
+  "sku": "BOX-500",
+  "name": "Shipping Box",
+  "categoryId": "6c2f77d9-4a58-4b99-95c4-07036c2bdc9f",
+  "supplierId": "b10f2b2b-8e3c-4ac8-8d72-0784c38317c1",
+  "reorderPoint": 25,
+  "unitCost": 1.15
+}
+```
+
+Adjust stock request:
+```json
+{
+  "inventoryItemId": "2e3f4a5b-6c7d-8e9f-1a2b-3c4d5e6f7081",
+  "quantityDelta": 50,
+  "reason": "Restock shipment"
+}
 ```
 
 ## Security Notes

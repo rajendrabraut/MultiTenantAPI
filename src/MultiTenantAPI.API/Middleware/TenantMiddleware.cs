@@ -3,9 +3,14 @@ using MultiTenantAPI.Application.Tenants;
 
 namespace MultiTenantAPI.API.Middleware;
 
-public sealed class TenantMiddleware(RequestDelegate next)
+public sealed class TenantMiddleware
 {
-    private readonly RequestDelegate _next = next;
+    private readonly RequestDelegate _next;
+
+    public TenantMiddleware(RequestDelegate next)
+    {
+        _next = next;
+    }
 
     public async Task InvokeAsync(
         HttpContext context,
@@ -38,12 +43,10 @@ public sealed class TenantMiddleware(RequestDelegate next)
         }
 
         tenantContextAccessor.Current = new TenantContext(session.CompanyCode, session.ConnectionString, session.TenantSessionId);
-
         using (logger.BeginScope(new Dictionary<string, object> { ["CompanyCode"] = session.CompanyCode }))
         {
             logger.LogDebug("Tenant context set for {CompanyCode}.", session.CompanyCode);
             await _next(context);
         }
-
     }
 }
